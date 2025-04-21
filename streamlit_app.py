@@ -120,7 +120,7 @@ with col1:
     st.image("チーム スリープ・ウェル.jpg", width=120)
 
 with col2:
-    st.markdown("<h1 style='font-size: 72px; color: blue;'>jRCT & ClinicalTrials.gov 検索アプリ</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='font-size: 48px; color: blue;'>jRCT & ClinicalTrials.gov 検索アプリ</h1>", unsafe_allow_html=True)
 
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
