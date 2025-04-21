@@ -112,6 +112,7 @@ def search_jrct(disease_name, free_keyword, location):
     return results
 
 # Streamlit アプリ本体
+st.image("チーム スリープ・ウェル.jpg")
 st.title("jRCT & ClinicalTrials.gov 検索アプリ")
 
 disease_name = st.text_input("疾患名", "肺がん")
