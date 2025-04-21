@@ -116,7 +116,7 @@ st.title("jRCT & ClinicalTrials.gov 検索アプリ")
 
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
-jp_location = st.text_input("実施場所", "日本")
+jp_location = st.text_input("実施場所：都道府県名で入力してください", "東京都")
 
 if st.button("検索"):
     # jRCT 検索
