@@ -64,6 +64,9 @@ def search_jrct(disease_name, free_keyword):
     try:
         driver = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=options)
         driver.implicitly_wait(40)
+        st.write("WebDriver 初期化成功")
+    except Exception as e:
+        st.error(f"Error initializing WebDriver: {str(e)}")
 
         driver.get("https://jrct.mhlw.go.jp/search")
 
