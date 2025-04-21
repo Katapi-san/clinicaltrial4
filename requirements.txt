@@ -1,5 +1,5 @@
-streamlit
+streamlit==1.32.2
+selenium==4.17.2
 pandas
-selenium
 requests
 openai
