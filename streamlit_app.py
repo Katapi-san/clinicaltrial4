@@ -52,7 +52,7 @@ def fetch_trials(condition, other_terms, location):
     return r.json()
 
 # jRCT 検索関数
-def search_jrct(disease_name, free_keyword):
+def search_jrct(disease_name, free_keyword, location):
     CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
     CHROME_BINARY_PATH = "/usr/bin/chromium"
 
@@ -74,6 +74,7 @@ def search_jrct(disease_name, free_keyword):
 
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-plobrem-1"))).send_keys(disease_name)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "demo-1"))).send_keys(free_keyword)
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-address"))).send_keys(location)
 
         checkbox = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-recruitment-2")))
         if not checkbox.is_selected():
@@ -115,10 +116,11 @@ st.title("jRCT & ClinicalTrials.gov 検索アプリ")
 
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
+jp_location = st.text_input("実施場所", "日本")
 
 if st.button("検索"):
     # jRCT 検索
-    jrct_results = search_jrct(disease_name, free_keyword)
+    jrct_results = search_jrct(disease_name, free_keyword, jp_location)
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
         st.subheader("🔍 jRCT 検索結果一覧")
@@ -138,7 +140,7 @@ if st.button("検索"):
     # ClinicalTrials.gov 検索
     condition_en_raw = translate_to_english(disease_name)
     other_terms_en_raw = translate_to_english(free_keyword)
-    location_en_raw = translate_to_english("日本")
+    location_en_raw = translate_to_english(jp_location)
 
     condition_en = extract_english_phrase(condition_en_raw)
     other_terms_en = extract_english_phrase(other_terms_en_raw)
