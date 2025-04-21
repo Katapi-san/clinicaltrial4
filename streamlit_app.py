@@ -112,7 +112,7 @@ def search_jrct(disease_name, free_keyword, location):
     return results
 
 # Streamlit アプリ本体
-st.title("jRCT & ClinicalTrials.gov 治験一括検索アプリ")
+# st.title("jRCT & ClinicalTrials.gov 治験一括検索アプリ")
 
 col1, col2 = st.columns([1, 3])
 
@@ -120,7 +120,7 @@ with col1:
     st.image("チーム スリープ・ウェル.jpg", width=120)
 
 with col2:
-    st.write("jRCT & ClinicalTrials.gov 検索アプリ")
+    st.write("jRCT & ClinicalTrials.gov 検索一括検索アプリ")
 
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
