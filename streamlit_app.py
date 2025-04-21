@@ -4,17 +4,7 @@ import pandas as pd
 import openai
 import re
 import base64
-import time
-
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-
-CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
-CHROME_BINARY_PATH = "/usr/bin/chromium"
+from bs4 import BeautifulSoup
 
 # OpenAI clientの初期化
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
@@ -51,56 +41,44 @@ def fetch_clinical_trials(condition, terms, location):
         st.stop()
     return r.json()
 
-# jRCT検索関数
-def search_jrct(disease_name, free_keyword):
-    CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
-    CHROME_BINARY_PATH = "/usr/bin/chromium"
+# jRCTをスクレイピングなしで検索する関数
+def search_jrct_without_selenium(disease_name, free_keyword):
+    base_url = "https://jrct.mhlw.go.jp/search"
+    session = requests.Session()
 
-    options = Options()
-    options.binary_location = CHROME_BINARY_PATH
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("user-agent=Mozilla/5.0")
+    params = {
+        "keyword": disease_name,
+        "target": free_keyword,
+        "recruitmentStatus": "2"  # 募集中
+    }
 
-    driver = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=options)
-    driver.implicitly_wait(20)
-    driver.get("https://jrct.mhlw.go.jp/search")
+    response = session.get(base_url, params=params)
 
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-plobrem-1"))).send_keys(disease_name)
-    WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "demo-1"))).send_keys(free_keyword)
+    if response.status_code != 200:
+        return pd.DataFrame(), f"HTTPエラー: {response.status_code}"
 
-    checkbox = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-recruitment-2")))
-    if not checkbox.is_selected():
-        checkbox.click()
+    soup = BeautifulSoup(response.content, "html.parser")
+    rows = soup.select("table.table-search tbody tr")
 
-    search_button_element = WebDriverWait(driver, 20).until(
-        EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "検索")]'))
-    )
-    driver.execute_script("arguments[0].scrollIntoView(true);", search_button_element)
-    time.sleep(1)
-    search_button_element.click()
-
-    rows = WebDriverWait(driver, 20).until(
-        EC.presence_of_all_elements_located((By.CSS_SELECTOR, "table.table-search tbody tr"))
-    )
+    if not rows:
+        return pd.DataFrame(), "検索結果が見つかりませんでした。"
 
     results = []
     for row in rows:
-        cols = row.find_elements(By.TAG_NAME, "td")
+        cols = row.find_all("td")
+        if len(cols) < 6:
+            continue
+        link = cols[5].find("a")["href"] if cols[5].find("a") else ""
         results.append({
             "臨床研究実施計画番号": cols[0].text.strip(),
             "研究の名称": cols[1].text.strip(),
             "対象疾患名": cols[2].text.strip(),
             "研究の進捗状況": cols[3].text.strip(),
             "公表日": cols[4].text.strip(),
-            "詳細": cols[5].find_element(By.TAG_NAME, "a").get_attribute("href")
+            "詳細": f"https://jrct.mhlw.go.jp{link}" if link.startswith("/") else link
         })
 
-    driver.quit()
-    return pd.DataFrame(results)
+    return pd.DataFrame(results), None
 
 # Streamlit UI
 st.title("日米臨床試験同時検索アプリ")
@@ -130,8 +108,8 @@ if st.button("検索"):
                 "ステータス": protocol.get("statusModule", {}).get("overallStatus", ""),
                 "開始日": protocol.get("statusModule", {}).get("startDateStruct", {}).get("startDate", ""),
                 "場所": protocol.get("locationsModule", {}).get("locations", [{}])[0].get("locationFacility", ""),
-                "リンク": f'https://clinicaltrials.gov/study/{protocol.get("identificationModule", {}).get("nctId", "")}'
-            })
+                "リンク": f'https://clinicaltrials.gov/study/{protocol.get("identificationModule", {}).get("nctId", "")}'}
+            )
         df_clinical = pd.DataFrame(results)
         st.dataframe(df_clinical)
 
@@ -139,8 +117,10 @@ if st.button("検索"):
         st.download_button("ClinicalTrials.govの結果をCSVダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
 
     st.subheader("jRCTの検索結果")
-    df_jrct = search_jrct(jp_condition, jp_terms)
-    if not df_jrct.empty:
+    df_jrct, jrct_error = search_jrct_without_selenium(jp_condition, jp_terms)
+    if jrct_error:
+        st.warning(jrct_error)
+    elif not df_jrct.empty:
         st.dataframe(df_jrct)
         csv_jrct = df_jrct.to_csv(index=False).encode('utf-8')
         st.download_button("jRCTの結果をCSVダウンロード", data=csv_jrct, file_name="jrct_trials.csv", mime="text/csv")
