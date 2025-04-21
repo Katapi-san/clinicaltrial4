@@ -4,7 +4,6 @@ import pandas as pd
 import openai
 import re
 import base64
-from bs4 import BeautifulSoup
 
 # OpenAI clientの初期化
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
@@ -41,44 +40,41 @@ def fetch_clinical_trials(condition, terms, location):
         st.stop()
     return r.json()
 
-# jRCTをスクレイピングなしで検索する関数
-def search_jrct_without_selenium(disease_name, free_keyword):
-    base_url = "https://jrct.mhlw.go.jp/search"
-    session = requests.Session()
-
+# jRCT検索関数
+def search_jrct(disease_name, free_keyword):
+    url = "https://jrct.mhlw.go.jp/search"
     params = {
-        "keyword": disease_name,
-        "target": free_keyword,
-        "recruitmentStatus": "2"  # 募集中
+        "reg-plobrem-1": disease_name,
+        "demo-1": free_keyword,
+        "reg-recruitment-2": "2",  # 募集ステータスが「募集中」のもの
     }
 
-    response = session.get(base_url, params=params)
-
+    # HTMLを取得
+    response = requests.get(url, params=params)
     if response.status_code != 200:
-        return pd.DataFrame(), f"HTTPエラー: {response.status_code}"
+        st.error(f"jRCTサイトへのアクセスエラー（ステータスコード: {response.status_code}）")
+        st.stop()
 
-    soup = BeautifulSoup(response.content, "html.parser")
+    # BeautifulSoupで解析
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(response.text, 'html.parser')
+
+    # 検索結果を抽出
     rows = soup.select("table.table-search tbody tr")
-
-    if not rows:
-        return pd.DataFrame(), "検索結果が見つかりませんでした。"
-
     results = []
     for row in rows:
         cols = row.find_all("td")
-        if len(cols) < 6:
-            continue
-        link = cols[5].find("a")["href"] if cols[5].find("a") else ""
-        results.append({
-            "臨床研究実施計画番号": cols[0].text.strip(),
-            "研究の名称": cols[1].text.strip(),
-            "対象疾患名": cols[2].text.strip(),
-            "研究の進捗状況": cols[3].text.strip(),
-            "公表日": cols[4].text.strip(),
-            "詳細": f"https://jrct.mhlw.go.jp{link}" if link.startswith("/") else link
-        })
+        if len(cols) > 5:
+            results.append({
+                "臨床研究実施計画番号": cols[0].get_text(strip=True),
+                "研究の名称": cols[1].get_text(strip=True),
+                "対象疾患名": cols[2].get_text(strip=True),
+                "研究の進捗状況": cols[3].get_text(strip=True),
+                "公表日": cols[4].get_text(strip=True),
+                "詳細": cols[5].find("a")["href"]
+            })
 
-    return pd.DataFrame(results), None
+    return pd.DataFrame(results)
 
 # Streamlit UI
 st.title("日米臨床試験同時検索アプリ")
@@ -108,8 +104,8 @@ if st.button("検索"):
                 "ステータス": protocol.get("statusModule", {}).get("overallStatus", ""),
                 "開始日": protocol.get("statusModule", {}).get("startDateStruct", {}).get("startDate", ""),
                 "場所": protocol.get("locationsModule", {}).get("locations", [{}])[0].get("locationFacility", ""),
-                "リンク": f'https://clinicaltrials.gov/study/{protocol.get("identificationModule", {}).get("nctId", "")}'}
-            )
+                "リンク": f'https://clinicaltrials.gov/study/{protocol.get("identificationModule", {}).get("nctId", "")}'
+            })
         df_clinical = pd.DataFrame(results)
         st.dataframe(df_clinical)
 
@@ -117,10 +113,8 @@ if st.button("検索"):
         st.download_button("ClinicalTrials.govの結果をCSVダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
 
     st.subheader("jRCTの検索結果")
-    df_jrct, jrct_error = search_jrct_without_selenium(jp_condition, jp_terms)
-    if jrct_error:
-        st.warning(jrct_error)
-    elif not df_jrct.empty:
+    df_jrct = search_jrct(jp_condition, jp_terms)
+    if not df_jrct.empty:
         st.dataframe(df_jrct)
         csv_jrct = df_jrct.to_csv(index=False).encode('utf-8')
         st.download_button("jRCTの結果をCSVダウンロード", data=csv_jrct, file_name="jrct_trials.csv", mime="text/csv")
