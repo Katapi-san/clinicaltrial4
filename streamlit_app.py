@@ -27,22 +27,27 @@ def translate_to_english(japanese_text):
     )
     return response.choices[0].message.content.strip()
 
-# 英訳結果から英語だけ抽出
+# 英訳からシンプルな英語キーワードを抽出
 def extract_english_phrase(text):
-    match = re.search(r'英語で「(.+?)」', text)
-    return match.group(1) if match else text
+    matches = re.findall(r'[A-Za-z0-9+\- ]{3,}', text)
+    if matches:
+        matches = sorted(matches, key=lambda x: (len(x), x))
+        return matches[0].strip()
+    return text
 
-# ClinicalTrials.gov API 呼び出し関数
-def fetch_trials(condition):
+# ClinicalTrials.gov API 呼び出し
+def fetch_trials(condition, other_terms, location):
     url = "https://clinicaltrials.gov/api/v2/studies"
     params = {
         "query.cond": condition,
-        "filter.overallStatus": "RECRUITING",
-        "query.locn": "Japan"
+        "query.term": other_terms,
+        "query.locn": location,
+        "filter.overallStatus": "RECRUITING"
     }
     r = requests.get(url, params=params)
     if r.status_code != 200:
         st.error(f"APIエラーが発生しました（ステータスコード: {r.status_code}）")
+        st.write("実際のリクエストURL:", r.url)
         st.stop()
     return r.json()
 
@@ -54,7 +59,7 @@ def search_jrct(disease_name, free_keyword):
     options = Options()
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
     options.binary_location = CHROME_BINARY_PATH
-    options.add_argument("--headless=new")
+    options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
@@ -64,9 +69,6 @@ def search_jrct(disease_name, free_keyword):
     try:
         driver = webdriver.Chrome(service=Service(CHROMEDRIVER_PATH), options=options)
         driver.implicitly_wait(40)
-        st.write("WebDriver 初期化成功")
-    except Exception as e:
-        st.error(f"Error initializing WebDriver: {str(e)}")
 
         driver.get("https://jrct.mhlw.go.jp/search")
 
@@ -111,11 +113,12 @@ def search_jrct(disease_name, free_keyword):
 # Streamlit アプリ本体
 st.title("jRCT & ClinicalTrials.gov 検索アプリ")
 
-jp_term = st.text_input("疾患名・キーワード（日本語）", "肺がん EGFR")
+disease_name = st.text_input("疾患名", "肺がん")
+free_keyword = st.text_input("フリーワード", "EGFR")
 
 if st.button("検索"):
     # jRCT 検索
-    jrct_results = search_jrct(jp_term, jp_term)
+    jrct_results = search_jrct(disease_name, free_keyword)
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
         st.subheader("🔍 jRCT 検索結果一覧")
@@ -133,15 +136,21 @@ if st.button("検索"):
         st.warning("jRCTの検索結果が見つかりませんでした。")
 
     # ClinicalTrials.gov 検索
-    raw_translation = translate_to_english(jp_term)
-    translated_term = extract_english_phrase(raw_translation)
+    condition_en_raw = translate_to_english(disease_name)
+    other_terms_en_raw = translate_to_english(free_keyword)
+    location_en_raw = translate_to_english("日本")
 
-    st.write(f"翻訳結果: {raw_translation}")
-    st.write(f"検索に使う英語キーワード: {translated_term}")
+    condition_en = extract_english_phrase(condition_en_raw)
+    other_terms_en = extract_english_phrase(other_terms_en_raw)
+    location_en = extract_english_phrase(location_en_raw)
 
-    data = fetch_trials(translated_term)
+    st.subheader("翻訳結果")
+    st.write(f"Condition: {condition_en_raw} → `{condition_en}`")
+    st.write(f"Other Terms: {other_terms_en_raw} → `{other_terms_en}`")
+    st.write(f"Location: {location_en_raw} → `{location_en}`")
 
-    # 検索結果の整形
+    data = fetch_trials(condition_en, other_terms_en, location_en)
+
     studies = data.get("studies", [])
     if not studies:
         st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
@@ -161,6 +170,5 @@ if st.button("検索"):
         st.subheader("🔍 ClinicalTrials.gov 検索結果一覧")
         st.dataframe(df_clinical)
 
-        # CSVダウンロードボタン
         csv = df_clinical.to_csv(index=False).encode('utf-8')
         st.download_button("CSVをダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
