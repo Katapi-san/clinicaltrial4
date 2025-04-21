@@ -115,7 +115,7 @@ def search_jrct(disease_name, free_keyword, location):
 st.title("jRCT & ClinicalTrials.gov 治験一括検索アプリ")
 
 # 2つのカラムを作成
-col1, col2 = st.columns([1, 2])  # 左側のカラムが1、右側のカラムが2の比率
+col1, col2 = st.columns([1, 3])
 
 # 左側のカラムに画像を表示
 with col1:
