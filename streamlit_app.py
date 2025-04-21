@@ -186,8 +186,15 @@ if st.button("検索"):
             })
 
         df_clinical = pd.DataFrame(results)
+
+        # Convert URLs to clickable links
+        def make_clickable(val):
+            return f'<a href="{val}" target="_blank">リンク</a>'
+
+        df_clinical['リンク'] = df_clinical['リンク'].apply(make_clickable)
+    
         st.subheader("🔍 ClinicalTrials.gov 検索結果一覧")
-        st.dataframe(df_clinical)
+        st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         csv = df_clinical.to_csv(index=False).encode('utf-8')
         st.download_button("CSVをダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
