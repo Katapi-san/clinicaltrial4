@@ -117,7 +117,7 @@ def search_jrct(disease_name, free_keyword, location):
 col1, col2 = st.columns([1, 3])
 
 with col1:
-    st.image("チーム スリープ・ウェル.jpg", width=120)
+    st.image("Tech0_team_sleep_well_1.jpg", width=120)
 
 with col2:
     st.markdown("<h1 style='font-size: 48px; color: blue;'>jRCT & ClinicalTrials.gov 検索アプリ</h1>", unsafe_allow_html=True)
