@@ -13,6 +13,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
+CHROME_BINARY_PATH = "/usr/bin/chromium"
+
 # OpenAI clientの初期化
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 
