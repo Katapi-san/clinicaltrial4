@@ -1,2 +1,5 @@
 streamlit
-openai==0.28.0
+pandas
+selenium
+requests
+openai
