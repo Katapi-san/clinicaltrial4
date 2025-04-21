@@ -112,10 +112,7 @@ def search_jrct(disease_name, free_keyword, location):
     return results
 
 # Streamlit アプリ本体
-st.title("jRCT & ClinicalTrials.gov 検索アプリ")
-
-col1, col2 = st.columns([1, 2])  # 左側のカラムが1、右側のカラムが2の比率
-
+st.title("jRCT & ClinicalTrials.gov 治験一括検索アプリ")
 
 # 2つのカラムを作成
 col1, col2 = st.columns([1, 2])  # 左側のカラムが1、右側のカラムが2の比率
