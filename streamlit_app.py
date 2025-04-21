@@ -116,7 +116,7 @@ st.title("jRCT & ClinicalTrials.gov 検索アプリ")
 
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
-jp_location = st.text_input("実施場所：都道府県名で入力してください", "東京都")
+jp_location = st.text_input("実施場所", "日本")
 
 if st.button("検索"):
     # jRCT 検索
@@ -124,7 +124,16 @@ if st.button("検索"):
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
         st.subheader("🔍 jRCT 検索結果一覧")
-        st.dataframe(df_jrct, use_container_width=True)
+
+        # リンクを含むHTMLを生成
+        def make_clickable(val):
+            return f'<a href="{val}" target="_blank">詳細</a>'
+
+        # "詳細"列をリンクに変換
+        df_jrct['詳細'] = df_jrct['詳細'].apply(make_clickable)
+
+        # HTMLとしてデータフレームを表示
+        st.write(df_jrct.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         # CSVダウンロードリンク生成
         def generate_download_link(dataframe, filename):
