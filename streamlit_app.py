@@ -129,6 +129,9 @@ jp_location = st.text_input("実施場所：東京、大阪 など", "東京")
 if st.button("検索"):
     # jRCT 検索
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
+    jrct_count = len(jrct_results)  # Count the number of jRCT results
+    st.write(f"jRCT 検索結果: {jrct_count} 件ヒットしました。")
+    
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
         st.subheader("🔍 jRCT 検索結果一覧")
@@ -171,6 +174,9 @@ if st.button("検索"):
     data = fetch_trials(condition_en, other_terms_en, location_en)
 
     studies = data.get("studies", [])
+    clinical_count = len(studies)  # Count the number of ClinicalTrials.gov results
+    st.write(f"ClinicalTrials.gov 検索結果: {clinical_count} 件ヒットしました。")
+    
     if not studies:
         st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
     else:
