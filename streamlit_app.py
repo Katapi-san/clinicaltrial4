@@ -127,22 +127,26 @@ def search_jrct(disease_name, free_keyword, location):
 
     return results
 
-# =============== Streamlit アプリ本体 ===============
-# タイトル部分
+# =====================================================
+#                  Streamlit アプリ本体
+# =====================================================
+# -- タイトル部分 --
 col1, col2 = st.columns([1, 3])
 with col1:
     st.image("Tech0_team_sleep_well_1.jpg", width=180)
 with col2:
     st.markdown("<h1 style='font-size: 48px; color: blue;'>jRCT & ClinicalTrials.gov 検索アプリ</h1>", unsafe_allow_html=True)
 
-# 入力項目
+# -- 入力項目 --
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
 jp_location = st.text_input("実施場所：東京、大阪 など", "東京")
 
-# 検索ボタン
+# -- 検索ボタン --
 if st.button("検索"):
-    # --- jRCT 検索 ---
+    # ======================
+    # jRCT 検索
+    # ======================
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
@@ -168,13 +172,15 @@ if st.button("検索"):
     else:
         st.warning("jRCTの検索結果が見つかりませんでした。")
 
-    # --- ClinicalTrials.gov 検索 ---
-    # 日本語 -> 英語
+    # ======================
+    # ClinicalTrials.gov 検索
+    # ======================
+    # 1) 日本語 -> 英語 翻訳
     condition_en_raw = translate_to_english(disease_name)
     other_terms_en_raw = translate_to_english(free_keyword)
     location_en_raw = translate_to_english(jp_location)
 
-    # シンプル英語キーワード抽出
+    # 2) シンプル英語キーワード抽出
     condition_en = extract_english_phrase(condition_en_raw)
     other_terms_en = extract_english_phrase(other_terms_en_raw)
     location_en = extract_english_phrase(location_en_raw)
@@ -184,14 +190,14 @@ if st.button("検索"):
     st.write(f"Other Terms: {other_terms_en_raw} → `{other_terms_en}`")
     st.write(f"Location: {location_en_raw} → `{location_en}`")
 
-    # ClinicalTrials.gov API取得
+    # 3) ClinicalTrials.gov API取得
     data = fetch_trials(condition_en, other_terms_en, location_en)
     studies = data.get("studies", [])
 
     if not studies:
         st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
     else:
-        # 取得した情報をリスト化してDataFrameに格納
+        # データフレーム作成
         results_ctgov = []
         for study in studies:
             protocol = study.get("protocolSection", {})
@@ -201,7 +207,7 @@ if st.button("検索"):
             eligibility = protocol.get("eligibilityModule", {})
             location_module = protocol.get("locationsModule", {})
 
-            # Locationsは複数存在することがあるので連結
+            # Locationsが複数あればまとめる
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
@@ -217,32 +223,66 @@ if st.button("検索"):
 
         df_clinical = pd.DataFrame(results_ctgov)
 
-        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧")
-
-        # 表示用DataFrame（まずは英語のまま）
-        st.dataframe(df_clinical.style.set_properties(**{'text-align': 'left'}), use_container_width=True)
-
-        # CSVダウンロードボタン
+        # ================================
+        # CSV ダウンロードボタン
+        # ================================
+        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（英語）")
         csv = df_clinical.to_csv(index=False).encode('utf-8')
-        st.download_button("CSVをダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
+        st.download_button("検索結果をCSVでダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
 
-        # -- Brief Summary / Eligibility Criteria の翻訳機能 --
-        st.write("### 個別翻訳ツール")
-        st.write("翻訳したい行（試験ID）を選択し、ボタンを押すとBrief SummaryとEligibility Criteriaを高校生でもわかる日本語に変換します。")
+        # ============================================
+        # 表示＋各項目の右側に「翻訳」ボタンをつける版
+        # ============================================
+        st.write("---")
+        st.write("## ClinicalTrials.gov 検索結果（項目ごとの翻訳ボタン付き）")
 
-        trial_ids = df_clinical["試験ID"].tolist()
-        selected_id = st.selectbox("試験IDを選択", trial_ids)
+        # セッションステートに翻訳結果を保存するdictionaryを用意
+        if "translations" not in st.session_state:
+            st.session_state["translations"] = {}
 
-        selected_row = df_clinical[df_clinical["試験ID"] == selected_id].iloc[0]
-        brief_en = selected_row["Brief Summary"]
-        elig_en = selected_row["Eligibility Criteria"]
+        # 行ごとに描画
+        for i, row in df_clinical.iterrows():
+            nct_id = row["試験ID"]
+            official_title = row["試験名"]
+            brief_en = row["Brief Summary"]
+            elig_en = row["Eligibility Criteria"]
+            locs = row["Locations"]
+            status = row["ステータス"]
+            last_update = row["Last Update Posted"]
 
-        if st.button("Brief Summary を翻訳"):
-            translated_brief = translate_to_simple_japanese(brief_en)
-            st.write("#### 【翻訳結果】Brief Summary")
-            st.write(translated_brief)
+            # セッションステートに既に翻訳があれば取得
+            key_bs = f"brief_summary_{i}"
+            key_ec = f"eligibility_{i}"
 
-        if st.button("Eligibility Criteria を翻訳"):
-            translated_elig = translate_to_simple_japanese(elig_en)
-            st.write("#### 【翻訳結果】Eligibility Criteria")
-            st.write(translated_elig)
+            # まだ翻訳されていなければ原文、翻訳されていれば翻訳文を表示
+            display_brief = st.session_state["translations"].get(key_bs, brief_en)
+            display_elig = st.session_state["translations"].get(key_ec, elig_en)
+
+            st.markdown(f"**[試験ID]**: {nct_id}")
+            st.markdown(f"**[試験名]**: {official_title}")
+            st.markdown(f"**[ステータス]**: {status}")
+            st.markdown(f"**[Last Update Posted]**: {last_update}")
+            st.markdown(f"**[Locations]**: {locs}")
+
+            # Brief Summary（翻訳ボタンを右側に置くためにカラムを並べる）
+            col_bs_text, col_bs_button = st.columns([4, 1], gap="small")
+            with col_bs_text:
+                st.markdown(f"**Brief Summary**: {display_brief}")
+            with col_bs_button:
+                if st.button("翻訳", key=f"bs_btn_{i}"):
+                    translated = translate_to_simple_japanese(brief_en)
+                    st.session_state["translations"][key_bs] = translated
+                    st.experimental_rerun()
+
+            # Eligibility Criteria（こちらも右側に翻訳ボタン）
+            col_ec_text, col_ec_button = st.columns([4, 1], gap="small")
+            with col_ec_text:
+                st.markdown(f"**Eligibility Criteria**: {display_elig}")
+            with col_ec_button:
+                if st.button("翻訳", key=f"ec_btn_{i}"):
+                    translated = translate_to_simple_japanese(elig_en)
+                    st.session_state["translations"][key_ec] = translated
+                    st.experimental_rerun()
+
+            # 区切り線
+            st.write("---")
