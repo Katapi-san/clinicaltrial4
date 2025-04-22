@@ -231,62 +231,23 @@ if st.button("検索"):
             status_module = protocol.get("statusModule", {})
             location_module = protocol.get("locationsModule", {})
 
-            # "試験ID" でリンクを作れるように、リンク先を組み立て
-            nct_id = identification.get("nctId", "")
-            link_url = f"https://clinicaltrials.gov/study/{nct_id}"  # ClinicalTrials.govの詳細ページ
-
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
             # Eligibility Criteria は表示しない（取得しない）
             results_ctgov.append({
-                "試験ID": nct_id,
+                "試験ID": identification.get("nctId", ""),
                 "試験名": identification.get("officialTitle", ""),
                 "Brief Summary": description.get("briefSummary", ""),
                 "Locations": loc_str,
                 "ステータス": status_module.get("overallStatus", ""),
-                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", ""),
-                "リンク": link_url  # 後でHTMLタグ化する
+                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", "")
             })
 
         df_clinical = pd.DataFrame(results_ctgov)
 
-        # 1) "試験名" と "Brief Summary" カラム幅を広げるためにCSSを付与
-        #    (Streamlitのto_html + some CSS trick)
-        #
-        # 2) "リンク"をHTMLリンクに変換
-        def make_clickable_ctgov(url):
-            return f'<a href="{url}" target="_blank">リンク</a>'
-
-        df_clinical["リンク"] = df_clinical["リンク"].apply(make_clickable_ctgov)
-
-        # DataFrameをHTMLに変換する際に、列幅を指定したCSSを埋め込む
-        # 例: 試験名とBrief Summaryに対し、最小幅(min-width)を設定
-        custom_css = """
-        <style>
-        table {
-            table-layout: auto !important;
-            width: 100% !important;
-            border-collapse: collapse;
-        }
-        th {
-            padding: 8px;
-        }
-        td {
-            padding: 8px;
-            vertical-align: top;
-        }
-        th:nth-child(2), td:nth-child(2) {
-            min-width: 200px; /* 試験名の幅 */
-        }
-        th:nth-child(3), td:nth-child(3) {
-            min-width: 300px; /* Brief Summaryの幅 */
-        }
-        </style>
-        """
-        # dfをHTMLに変換
-        html_table = df_clinical.to_html(escape=False, index=False)
-        st.write(custom_css + html_table, unsafe_allow_html=True)
+        # 表示
+        st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         # CSV ダウンロードボタン
         csv_ct = df_clinical.to_csv(index=False).encode('utf-8')
