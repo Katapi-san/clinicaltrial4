@@ -34,7 +34,7 @@ def translate_to_english(japanese_text):
 # 英語→平易な日本語翻訳（試験名・Brief summary 用）
 def translate_to_easy_japanese(english_text):
     if not english_text:
-        return ""  # 空文字などエラー回避
+        return ""
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -160,20 +160,58 @@ with col1:
 with col2:
     st.markdown("<h1 style='font-size: 48px; color: blue;'>jRCT & ClinicalTrials.gov 検索アプリ</h1>", unsafe_allow_html=True)
 
+# 入力欄
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
 jp_location = st.text_input("実施場所：東京、大阪 など", "東京")
 
+# -- 検索ボタン
 if st.button("検索"):
-    ###################################
-    # jRCT 検索パート
-    ###################################
+    # -------------------------------------------------------
+    # ➀ jRCT 検索結果を取得・保存
+    # -------------------------------------------------------
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
-    jrct_count = len(jrct_results)  
+    st.session_state["jrct_results"] = jrct_results  # ← session_stateに保存
+
+    # -------------------------------------------------------
+    # ➁ ClinicalTrials.gov 検索ロジック
+    # -------------------------------------------------------
+    condition_en_raw = translate_to_english(disease_name)
+    other_terms_en_raw = translate_to_english(free_keyword)
+    location_en_raw = translate_to_english(jp_location)
+
+    condition_en = extract_english_phrase(condition_en_raw)
+    other_terms_en = extract_english_phrase(other_terms_en_raw)
+    location_en = extract_english_phrase(location_en_raw)
+
+    # 翻訳結果を表示
+    st.subheader("翻訳結果")
+    st.write(f"Condition: {condition_en_raw} → `{condition_en}`")
+    st.write(f"Other Terms: {other_terms_en_raw} → `{other_terms_en}`")
+    st.write(f"Location: {location_en_raw} → `{location_en}`")
+
+    # API取得
+    data = fetch_trials(condition_en, other_terms_en, location_en)
+    studies = data.get("studies", [])
+
+    # session_state に検索結果を記憶
+    st.session_state["clinical_studies"] = studies
+    st.session_state["condition_en"] = condition_en
+    st.session_state["other_terms_en"] = other_terms_en
+    st.session_state["location_en"] = location_en
+
+# -- ここから下は「スクリプト再実行時に常に表示する」パート (翻訳など)
+
+###################################
+# jRCT 結果表示
+###################################
+if "jrct_results" in st.session_state:
+    jrct_results_cached = st.session_state["jrct_results"]
+    jrct_count = len(jrct_results_cached)
     st.markdown(f"<h3>jRCT 検索結果: {jrct_count} 件ヒットしました。</h3>", unsafe_allow_html=True)
     
-    if jrct_results:
-        df_jrct = pd.DataFrame(jrct_results)
+    if jrct_count > 0:
+        df_jrct = pd.DataFrame(jrct_results_cached)
 
         col1_j, col2_j = st.columns([1, 3])
         with col1_j:
@@ -186,46 +224,31 @@ if st.button("検索"):
             return f'<a href="{val}" target="_blank">詳細</a>'
         df_jrct['詳細'] = df_jrct['詳細'].apply(make_clickable)
 
-        # HTMLとしてデータフレームを表示
         st.write(df_jrct.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-        # CSVダウンロードリンク生成
+        # CSV
         def generate_download_link(dataframe, filename):
             csv = dataframe.to_csv(index=False)
             b64 = base64.b64encode(csv.encode()).decode()
             href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 CSVをダウンロード</a>'
             return href
-
         st.markdown(generate_download_link(df_jrct, "jrct_results.csv"), unsafe_allow_html=True)
     else:
         st.warning("jRCTの検索結果が見つかりませんでした。")
 
-    ###################################
-    # ClinicalTrials.gov 検索パート
-    ###################################
-    condition_en_raw = translate_to_english(disease_name)
-    other_terms_en_raw = translate_to_english(free_keyword)
-    location_en_raw = translate_to_english(jp_location)
-
-    condition_en = extract_english_phrase(condition_en_raw)
-    other_terms_en = extract_english_phrase(other_terms_en_raw)
-    location_en = extract_english_phrase(location_en_raw)
-
-    st.subheader("翻訳結果")
-    st.write(f"Condition: {condition_en_raw} → `{condition_en}`")
-    st.write(f"Other Terms: {other_terms_en_raw} → `{other_terms_en}`")
-    st.write(f"Location: {location_en_raw} → `{location_en}`")
-
-    data = fetch_trials(condition_en, other_terms_en, location_en)
-    studies = data.get("studies", [])
-    clinical_count = len(studies)
+###################################
+# ClinicalTrials.gov 結果表示
+###################################
+if "clinical_studies" in st.session_state:
+    studies_cached = st.session_state["clinical_studies"]
+    clinical_count = len(studies_cached)
     st.markdown(f"<h3>ClinicalTrials.gov 検索結果: {clinical_count} 件ヒットしました。</h3>", unsafe_allow_html=True)
-    
-    if not studies:
+
+    if clinical_count == 0:
         st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
     else:
         results = []
-        for study in studies:
+        for study in studies_cached:
             results.append({
                 "試験ID": study.get("protocolSection", {}).get("identificationModule", {}).get("nctId", ""),
                 "試験名": study.get("protocolSection", {}).get("identificationModule", {}).get("officialTitle", ""),
@@ -244,14 +267,13 @@ if st.button("検索"):
         with col2_c:
             st.markdown("<h2 style='color: blue;'>検索結果一覧</h2>", unsafe_allow_html=True)
         
-        # ここから先は「行ごとに」情報＋翻訳ボタンを表示
-        # （HTMLテーブルではなく、ループで行を1つずつ描画）
+        # 行ごと表示＋翻訳ボタン
         for i, row in df_clinical.iterrows():
             with st.expander(f"試験ID: {row['試験ID']} / ステータス: {row['ステータス']}"):
                 st.write(f"【試験名】\n{row['試験名']}")
                 st.write(f"【Brief summary】\n{row['Brief summary']}")
                 
-                # リンク表示
+                # リンクを表示
                 st.markdown(f'<a href="{row["リンク"]}" target="_blank">試験の詳細</a>', unsafe_allow_html=True)
                 
                 # 翻訳ボタン
@@ -264,6 +286,6 @@ if st.button("検索"):
                     st.write(f"【試験名（日本語）】\n{translated_title}")
                     st.write(f"【Brief summary（日本語）】\n{translated_summary}")
 
-        # CSV ダウンロード（英語版そのまま）
+        # CSV ダウンロード（英語版）
         csv = df_clinical.to_csv(index=False).encode('utf-8')
         st.download_button("CSVをダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
