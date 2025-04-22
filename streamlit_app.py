@@ -16,9 +16,25 @@ from selenium.webdriver.support import expected_conditions as EC
 # === OpenAI APIキーを Streamlit Cloud の secrets から取得 ===
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 
+# === Eligibility Criteria の英語を要約して日本語に翻訳する関数 ===
+def summarize_eligibility_in_japanese(english_text):
+    """
+    Eligibility Criteriaの英語全文を簡潔に要約し、平易な日本語に翻訳する。
+    """
+    if not english_text:
+        return "（該当なし）"
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "あなたは優秀な日本語要約者です。医学的要件をなるべくわかりやすく、簡潔に日本語でまとめてください。"},
+            {"role": "user", "content": english_text}
+        ]
+    )
+    return response.choices[0].message.content.strip()
+
 # === 日本語→英語翻訳関数（ChatGPTを使って日本語→英語） ===
 def translate_to_english(japanese_text):
-    # GPTを使って日本語を英語に翻訳
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -30,10 +46,8 @@ def translate_to_english(japanese_text):
 
 # === 英訳からシンプルな英語キーワードを抽出 ===
 def extract_english_phrase(text):
-    # 英数字とスペースのみで3文字以上続くものを抽出
     matches = re.findall(r'[A-Za-z0-9+\- ]{3,}', text)
     if matches:
-        # もっとも短いものを取得
         matches = sorted(matches, key=lambda x: (len(x), x))
         return matches[0].strip()
     return text
@@ -201,11 +215,18 @@ if st.button("検索"):
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
+            # -------------------
+            # Eligibility Criteria の本文 (英語) を要約して日本語に変換
+            # -------------------
+            original_eligibility = eligibility.get("eligibilityCriteria", "")
+            summarized_jp = summarize_eligibility_in_japanese(original_eligibility)
+
+            # DataFrameに入れる
             results_ctgov.append({
                 "試験ID": identification.get("nctId", ""),
                 "試験名": identification.get("officialTitle", ""),
-                "Brief Summary": description.get("briefSummary", ""),
-                "Eligibility Criteria": eligibility.get("eligibilityCriteria", ""),
+                "Brief Summary": description.get("briefSummary", ""),  # 英語のまま
+                "Eligibility Criteria": summarized_jp,               # 日本語要約
                 "Locations": loc_str,
                 "ステータス": status_module.get("overallStatus", ""),
                 "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", "")
@@ -214,7 +235,7 @@ if st.button("検索"):
         df_clinical = pd.DataFrame(results_ctgov)
 
         # HTMLテーブル表示
-        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧")
+        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（Eligibility Criteriaは日本語要約）")
         st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         # CSVダウンロードボタン
