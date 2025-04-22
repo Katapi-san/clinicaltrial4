@@ -112,8 +112,6 @@ def search_jrct(disease_name, free_keyword, location):
     return results
 
 # Streamlit アプリ本体
-# st.title("jRCT & ClinicalTrials.gov 治験一括検索アプリ")
-
 col1, col2 = st.columns([1, 3])
 
 with col1:
@@ -130,7 +128,9 @@ if st.button("検索"):
     # jRCT 検索
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
     jrct_count = len(jrct_results)  # Count the number of jRCT results
-    st.write(f"jRCT 検索結果: {jrct_count} 件ヒットしました。")
+
+    # 件数表示を大きく
+    st.markdown(f"<h3>jRCT 検索結果: {jrct_count} 件ヒットしました。</h3>", unsafe_allow_html=True)
     
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
@@ -175,7 +175,9 @@ if st.button("検索"):
 
     studies = data.get("studies", [])
     clinical_count = len(studies)  # Count the number of ClinicalTrials.gov results
-    st.write(f"ClinicalTrials.gov 検索結果: {clinical_count} 件ヒットしました。")
+
+    # 件数表示を大きく
+    st.markdown(f"<h3>ClinicalTrials.gov 検索結果: {clinical_count} 件ヒットしました。</h3>", unsafe_allow_html=True)
     
     if not studies:
         st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
@@ -186,8 +188,13 @@ if st.button("検索"):
                 "試験ID": study.get("protocolSection", {}).get("identificationModule", {}).get("nctId", ""),
                 "試験名": study.get("protocolSection", {}).get("identificationModule", {}).get("officialTitle", ""),
                 "ステータス": study.get("protocolSection", {}).get("statusModule", {}).get("overallStatus", ""),
-                "開始日": study.get("protocolSection", {}).get("statusModule", {}).get("startDateStruct", {}).get("startDate", ""),
-                "場所": study.get("protocolSection", {}).get("locationsModule", {}).get("locations", [{}])[0].get("locationFacility", ""),
+                # 「開始日」と「場所」は削る → 削除
+                # "開始日": study.get("protocolSection", {}).get("statusModule", {}).get("startDateStruct", {}).get("startDate", ""),
+                # "場所": study.get("protocolSection", {}).get("locationsModule", {}).get("locations", [{}])[0].get("locationFacility", ""),
+                # Brief summary を追加
+                "Brief summary": study.get("protocolSection", {})
+                                  .get("descriptionModule", {})
+                                  .get("briefSummary", ""),
                 "リンク": f'https://clinicaltrials.gov/study/{study.get("protocolSection", {}).get("identificationModule", {}).get("nctId", "")}'
             })
 
