@@ -135,7 +135,7 @@ if st.button("検索"):
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
         # 検索結果一覧タイトルを青色に
-        st.image("jRCT_logo.jpg", width=180)
+        st.image("jRCT_logo.jpg", width=150)
         st.markdown("<h2 style='color: blue;'>🔍 jRCT 検索結果一覧</h2>", unsafe_allow_html=True)
 
         # リンクを含むHTMLを生成
@@ -202,7 +202,7 @@ if st.button("検索"):
         df_clinical = pd.DataFrame(results)
 
         # タイトルを青色に
-        st.image("CTG_logo.jpg", width=180)
+        st.image("CTG_logo.jpg", width=220)
         st.markdown("<h2 style='color: blue;'>🔍 ClinicalTrials.gov 検索結果一覧</h2>", unsafe_allow_html=True)
 
         # Convert URLs to clickable links
