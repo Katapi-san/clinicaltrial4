@@ -3,7 +3,6 @@ import pandas as pd
 import base64
 import time
 import requests
-import openai
 import re
 
 from selenium import webdriver
@@ -12,29 +11,18 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import openai
 
-# === OpenAI APIキーを Streamlit Cloud の secrets から取得 ===
+# =====================
+# OpenAI API key
+# =====================
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 
-# === Eligibility Criteria の英語を要約して日本語に翻訳する関数 ===
-def summarize_eligibility_in_japanese(english_text):
-    """
-    Eligibility Criteriaの英語全文を簡潔に要約し、平易な日本語に翻訳する。
-    """
-    if not english_text:
-        return "（該当なし）"
-
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "あなたは優秀な日本語要約者です。医学的要件をなるべくわかりやすく、簡潔に日本語でまとめてください。"},
-            {"role": "user", "content": english_text}
-        ]
-    )
-    return response.choices[0].message.content.strip()
-
-# === 日本語→英語翻訳関数（ChatGPTを使って日本語→英語） ===
+# =====================
+# 日本語→英語翻訳関数
+# =====================
 def translate_to_english(japanese_text):
+    """ChatGPTを使って日本語を英語に翻訳する"""
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -44,16 +32,23 @@ def translate_to_english(japanese_text):
     )
     return response.choices[0].message.content.strip()
 
-# === 英訳からシンプルな英語キーワードを抽出 ===
+# =====================
+# 英語の単語を抽出する関数
+# =====================
 def extract_english_phrase(text):
+    """英数字とスペースだけで3文字以上連続する箇所を抽出して最も短いものを返す"""
     matches = re.findall(r'[A-Za-z0-9+\- ]{3,}', text)
     if matches:
+        # 文字数が短いものを優先
         matches = sorted(matches, key=lambda x: (len(x), x))
         return matches[0].strip()
     return text
 
-# === ClinicalTrials.gov APIを呼び出してJSONを取得 ===
+# =====================
+# ClinicalTrials.gov 検索API
+# =====================
 def fetch_trials(condition, other_terms, location):
+    """ClinicalTrials.govのAPI v2から情報を取得。Recruitingのものだけfilterする。"""
     url = "https://clinicaltrials.gov/api/v2/studies"
     params = {
         "query.cond": condition,
@@ -68,13 +63,19 @@ def fetch_trials(condition, other_terms, location):
         st.stop()
     return r.json()
 
-# === jRCT 検索関数 ===
+# =====================
+# jRCTの検索関数
+# =====================
 def search_jrct(disease_name, free_keyword, location):
+    """Chromedriverを使ってjRCTページを検索し、結果を取得する"""
     CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
     CHROME_BINARY_PATH = "/usr/bin/chromium"
 
     options = Options()
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    options.add_argument(
+        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+    )
     options.binary_location = CHROME_BINARY_PATH
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
@@ -88,13 +89,20 @@ def search_jrct(disease_name, free_keyword, location):
         driver.implicitly_wait(40)
 
         driver.get("https://jrct.mhlw.go.jp/search")
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, "reg-plobrem-1"))
+        ).send_keys(disease_name)
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, "demo-1"))
+        ).send_keys(free_keyword)
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, "reg-address"))
+        ).send_keys(location)
 
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-plobrem-1"))).send_keys(disease_name)
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "demo-1"))).send_keys(free_keyword)
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-address"))).send_keys(location)
-
-        # 募集前〜募集終了のチェックボックスをオンに
-        checkbox = WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "reg-recruitment-2")))
+        # 募集中だけでなく募集前～募集終了のチェックボックスをONにする
+        checkbox = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.ID, "reg-recruitment-2"))
+        )
         if not checkbox.is_selected():
             checkbox.click()
 
@@ -108,9 +116,9 @@ def search_jrct(disease_name, free_keyword, location):
 
         # 結果テーブルを取得
         rows = WebDriverWait(driver, 20).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "table.table-search tbody tr"))
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, "table.table-search tbody tr"))
         )
-
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
             results.append({
@@ -132,101 +140,91 @@ def search_jrct(disease_name, free_keyword, location):
     return results
 
 # =====================================================
-#                  Streamlit アプリ本体
+# Streamlit アプリ本体
 # =====================================================
-# -- タイトル --
 col1, col2 = st.columns([1, 3])
 with col1:
     st.image("Tech0_team_sleep_well_1.jpg", width=180)
 with col2:
-    st.markdown("<h1 style='font-size: 48px; color: blue;'>jRCT & ClinicalTrials.gov 検索アプリ</h1>", unsafe_allow_html=True)
+    st.markdown(
+        "<h1 style='font-size: 48px; color: blue;'>jRCT & ClinicalTrials.gov 検索アプリ</h1>",
+        unsafe_allow_html=True
+    )
 
-# -- 入力項目 --
+# ユーザ入力
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
 jp_location = st.text_input("実施場所：東京、大阪 など", "東京")
 
-# -- 検索ボタン --
 if st.button("検索"):
-    # ======================
+    # ******************************
     # jRCT 検索
-    # ======================
+    # ******************************
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
     if jrct_results:
-        df_jrct = pd.DataFrame(jrct_results)
         st.subheader("🔍 jRCT 検索結果一覧")
+        df_jrct = pd.DataFrame(jrct_results)
 
-        # "詳細"列をリンクに変換
+        # "詳細" 列をリンクに変換
         def make_clickable_jrct(val):
             return f'<a href="{val}" target="_blank">詳細</a>'
 
         df_jrct['詳細'] = df_jrct['詳細'].apply(make_clickable_jrct)
 
-        # HTMLとしてデータフレームを表示
         st.write(df_jrct.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-        # CSVダウンロードリンク
+        # CSVダウンロード
         def generate_download_link(dataframe, filename):
             csv = dataframe.to_csv(index=False)
             b64 = base64.b64encode(csv.encode()).decode()
-            href = f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 CSVをダウンロード</a>'
-            return href
+            return f'<a href="data:file/csv;base64,{b64}" download="{filename}">📥 CSVをダウンロード</a>'
 
         st.markdown(generate_download_link(df_jrct, "jrct_results.csv"), unsafe_allow_html=True)
     else:
         st.warning("jRCTの検索結果が見つかりませんでした。")
 
-    # ======================
+    # ******************************
     # ClinicalTrials.gov 検索
-    # ======================
-    # 1) 日本語 -> 英語 翻訳
-    condition_en_raw = translate_to_english(disease_name)
-    other_terms_en_raw = translate_to_english(free_keyword)
-    location_en_raw = translate_to_english(jp_location)
+    # ******************************
+    # 1) ユーザの日本語入力を英語に翻訳
+    disease_name_en_raw = translate_to_english(disease_name)
+    free_keyword_en_raw = translate_to_english(free_keyword)
+    jp_location_en_raw = translate_to_english(jp_location)
 
-    # 2) シンプル英語キーワード抽出
-    condition_en = extract_english_phrase(condition_en_raw)
-    other_terms_en = extract_english_phrase(other_terms_en_raw)
-    location_en = extract_english_phrase(location_en_raw)
+    # 2) シンプル英語キーの抽出
+    condition_en = extract_english_phrase(disease_name_en_raw)
+    other_terms_en = extract_english_phrase(free_keyword_en_raw)
+    location_en = extract_english_phrase(jp_location_en_raw)
 
     st.subheader("翻訳結果")
-    st.write(f"Condition: {condition_en_raw} → `{condition_en}`")
-    st.write(f"Other Terms: {other_terms_en_raw} → `{other_terms_en}`")
-    st.write(f"Location: {location_en_raw} → `{location_en}`")
+    st.write(f"Condition: {disease_name} → `{condition_en}`")
+    st.write(f"Other Terms: {free_keyword} → `{other_terms_en}`")
+    st.write(f"Location: {jp_location} → `{location_en}`")
 
-    # 3) ClinicalTrials.gov API取得
+    # 3) ClinicalTrials.gov API 呼び出し
     data = fetch_trials(condition_en, other_terms_en, location_en)
     studies = data.get("studies", [])
 
     if not studies:
-        st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
+        st.warning("ClinicalTrials.gov で該当する試験は見つかりませんでした。")
     else:
-        # DataFrame化
+        # Eligibility Criteria は取得しない or 表示しない
         results_ctgov = []
         for study in studies:
             protocol = study.get("protocolSection", {})
             identification = protocol.get("identificationModule", {})
             description = protocol.get("descriptionModule", {})
             status_module = protocol.get("statusModule", {})
-            eligibility = protocol.get("eligibilityModule", {})
             location_module = protocol.get("locationsModule", {})
 
-            # Locations が複数ある場合はカンマ区切りにする
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
-            # -------------------
-            # Eligibility Criteria の本文 (英語) を要約して日本語に変換
-            # -------------------
-            original_eligibility = eligibility.get("eligibilityCriteria", "")
-            summarized_jp = summarize_eligibility_in_japanese(original_eligibility)
-
-            # DataFrameに入れる
+            # Eligibility Criteria カラムは除外
             results_ctgov.append({
                 "試験ID": identification.get("nctId", ""),
                 "試験名": identification.get("officialTitle", ""),
-                "Brief Summary": description.get("briefSummary", ""),  # 英語のまま
-                "Eligibility Criteria": summarized_jp,               # 日本語要約
+                "Brief Summary": description.get("briefSummary", ""),
                 "Locations": loc_str,
                 "ステータス": status_module.get("overallStatus", ""),
                 "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", "")
@@ -234,10 +232,14 @@ if st.button("検索"):
 
         df_clinical = pd.DataFrame(results_ctgov)
 
-        # HTMLテーブル表示
-        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（Eligibility Criteriaは日本語要約）")
+        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（Eligibility Criteria は表示しません）")
         st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         # CSVダウンロードボタン
-        csv = df_clinical.to_csv(index=False).encode('utf-8')
-        st.download_button("ClinicalTrials.govの結果をCSVでダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
+        csv_ct = df_clinical.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="ClinicalTrials.govの結果をCSVでダウンロード",
+            data=csv_ct,
+            file_name="clinical_trials.csv",
+            mime="text/csv"
+        )
