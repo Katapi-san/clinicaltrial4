@@ -207,7 +207,7 @@ if st.button("検索"):
         # タイトルを青色に
         col1, col2 = st.columns([1, 3])
         with col1:
-            st.image("CTG_logo.jpg", width=220)
+            st.image("CTG_logo.jpg", width=180)
         with col2:
             st.markdown("<h2 style='color: blue;'>検索結果一覧</h2>", unsafe_allow_html=True)
 
