@@ -22,6 +22,7 @@ client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 # 日本語→英語翻訳関数
 # =====================
 def translate_to_english(japanese_text):
+    """ChatGPTを使って日本語を英語に翻訳する"""
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -35,8 +36,13 @@ def translate_to_english(japanese_text):
 # 英語の単語を抽出する関数
 # =====================
 def extract_english_phrase(text):
+    """
+    英数字とスペースのみで3文字以上連続する箇所を抽出。
+    もっとも短いものを優先的に返す。
+    """
     matches = re.findall(r'[A-Za-z0-9+\- ]{3,}', text)
     if matches:
+        # 文字数が短い順＋辞書順でソート
         matches = sorted(matches, key=lambda x: (len(x), x))
         return matches[0].strip()
     return text
@@ -45,6 +51,10 @@ def extract_english_phrase(text):
 # ClinicalTrials.gov 検索API
 # =====================
 def fetch_trials(condition, other_terms, location):
+    """
+    ClinicalTrials.govのAPI v2から情報を取得（Recruitingのみ）。
+    condition, other_terms, location は英語で与える。
+    """
     url = "https://clinicaltrials.gov/api/v2/studies"
     params = {
         "query.cond": condition,
@@ -60,9 +70,12 @@ def fetch_trials(condition, other_terms, location):
     return r.json()
 
 # =====================
-# jRCT 検索関数
+# jRCTの検索関数
 # =====================
 def search_jrct(disease_name, free_keyword, location):
+    """
+    ChromedriverでjRCTをスクレイピングし、検索結果一覧を取得。
+    """
     CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
     CHROME_BINARY_PATH = "/usr/bin/chromium"
 
@@ -94,7 +107,7 @@ def search_jrct(disease_name, free_keyword, location):
             EC.presence_of_element_located((By.ID, "reg-address"))
         ).send_keys(location)
 
-        # 募集前~募集終了のチェックボックスをON
+        # 募集前~募集終了までチェックをON
         checkbox = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "reg-recruitment-2"))
         )
@@ -102,16 +115,18 @@ def search_jrct(disease_name, free_keyword, location):
             checkbox.click()
 
         # 検索ボタンクリック
-        search_button_element = WebDriverWait(driver, 20).until(
+        search_button = WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "検索")]'))
         )
-        driver.execute_script("arguments[0].scrollIntoView(true);", search_button_element)
+        driver.execute_script("arguments[0].scrollIntoView(true);", search_button)
         time.sleep(1)
-        search_button_element.click()
+        search_button.click()
 
-        # 結果テーブル取得
+        # 結果テーブルの行を取得
         rows = WebDriverWait(driver, 20).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "table.table-search tbody tr"))
+            EC.presence_of_all_elements_located(
+                (By.CSS_SELECTOR, "table.table-search tbody tr")
+            )
         )
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
@@ -133,7 +148,6 @@ def search_jrct(disease_name, free_keyword, location):
 
     return results
 
-
 # =====================================================
 # Streamlit アプリ本体
 # =====================================================
@@ -146,24 +160,31 @@ with col2:
         unsafe_allow_html=True
     )
 
+# ユーザ入力
 disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
 jp_location = st.text_input("実施場所：東京、大阪 など", "東京")
 
 if st.button("検索"):
-    # ============== jRCT 検索 ==============
+    # =====================
+    # jRCT 検索
+    # =====================
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
     st.subheader("🔍 jRCT 検索結果一覧")
     if jrct_results:
+        # 何件ヒットしたかを表示
         st.write(f"**検索件数: {len(jrct_results)} 件**")
+
         df_jrct = pd.DataFrame(jrct_results)
 
+        # "詳細"列をリンクに変換
         def make_clickable_jrct(val):
             return f'<a href="{val}" target="_blank">詳細</a>'
         df_jrct['詳細'] = df_jrct['詳細'].apply(make_clickable_jrct)
 
         st.write(df_jrct.to_html(escape=False, index=False), unsafe_allow_html=True)
 
+        # CSVダウンロード
         def generate_download_link(dataframe, filename):
             csv = dataframe.to_csv(index=False)
             b64 = base64.b64encode(csv.encode()).decode()
@@ -173,7 +194,9 @@ if st.button("検索"):
     else:
         st.warning("jRCTの検索結果が見つかりませんでした。")
 
-    # ============== ClinicalTrials.gov 検索 ==============
+    # =====================
+    # ClinicalTrials.gov 検索
+    # =====================
     # 1) 日本語→英語翻訳
     disease_name_en_raw = translate_to_english(disease_name)
     free_keyword_en_raw = translate_to_english(free_keyword)
@@ -189,14 +212,15 @@ if st.button("検索"):
     st.write(f"Other Terms: {free_keyword} → `{other_terms_en}`")
     st.write(f"Location: {jp_location} → `{location_en}`")
 
-    # 3) ClinicalTrials.gov API呼び出し
+    # 3) ClinicalTrials.gov API 呼び出し
     data = fetch_trials(condition_en, other_terms_en, location_en)
     studies = data.get("studies", [])
 
-    st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（Eligibility Criteria は除外）")
+    st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（Eligibility Criteria は表示しません）")
     if not studies:
-        st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
+        st.warning("ClinicalTrials.gov で該当する試験は見つかりませんでした。")
     else:
+        # 件数表示
         st.write(f"**検索件数: {len(studies)} 件**")
 
         results_ctgov = []
@@ -207,69 +231,36 @@ if st.button("検索"):
             status_module = protocol.get("statusModule", {})
             location_module = protocol.get("locationsModule", {})
 
-            nct_id = identification.get("nctId", "")
-            link_url = f"https://clinicaltrials.gov/study/{nct_id}"
-
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
-            # 改行や過度なスペースを削除し、テーブルが壊れにくいようにする
-            official_title = (identification.get("officialTitle", "") or "").replace("\n", " ")
-            brief_summary = (description.get("briefSummary", "") or "").replace("\n", " ")
-
+            # Eligibility Criteria は表示しない（取得しない）
             results_ctgov.append({
-                "試験ID": nct_id,
-                "試験名": official_title,
-                "Brief Summary": brief_summary,
+                "試験ID": identification.get("nctId", ""),
+                "試験名": identification.get("officialTitle", ""),
+                "Brief Summary": description.get("briefSummary", ""),
                 "Locations": loc_str,
                 "ステータス": status_module.get("overallStatus", ""),
-                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", ""),
-                "リンク": link_url
+                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", "")
+                "リンク": link_url  # 後でHTMLタグ化する
             })
 
         df_clinical = pd.DataFrame(results_ctgov)
 
-        # 最右にリンクを表示するため、DataFrame列の順番を並べ替え
-        df_clinical = df_clinical[
-            ["試験ID", "試験名", "Brief Summary", "Locations", 
-             "ステータス", "Last Update Posted", "リンク"]
-        ]
-
+        # 1) "試験名" と "Brief Summary" カラム幅を広げるためにCSSを付与
+        #    (Streamlitのto_html + some CSS trick)
+        #
+        # 2) "リンク"をHTMLリンクに変換
         def make_clickable_ctgov(url):
             return f'<a href="{url}" target="_blank">リンク</a>'
+
         df_clinical["リンク"] = df_clinical["リンク"].apply(make_clickable_ctgov)
 
-        # カラム幅をCSSで調整
-        # 試験名(2列目)とBrief Summary(3列目)を広めにする
-        custom_css = """
-        <style>
-        table {
-          table-layout: auto;
-          width: 100%;
-          border-collapse: collapse;
-        }
-        th, td {
-          padding: 8px;
-          vertical-align: top;
-          text-align: left;
-          border: 1px solid #CCC;
-        }
-        th:nth-child(2), td:nth-child(2) {
-          min-width: 250px; /* 試験名を広めに */
-        }
-        th:nth-child(3), td:nth-child(3) {
-          min-width: 300px; /* Brief Summaryをさらに広めに */
-        }
-        </style>
-        """
-
-        # DataFrame -> HTML変換
-        html_table = df_clinical.to_html(escape=False, index=False)
-        # カスタムCSSを先頭に付けて表示
-        st.markdown(custom_css + html_table, unsafe_allow_html=True)
+        # 表示
+        st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         # CSV ダウンロードボタン
-        csv_ct = df_clinical.to_csv(index=False).encode("utf-8")
+        csv_ct = df_clinical.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="ClinicalTrials.govの結果をCSVでダウンロード",
             data=csv_ct,
