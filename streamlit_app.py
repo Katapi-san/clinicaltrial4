@@ -16,21 +16,9 @@ from selenium.webdriver.support import expected_conditions as EC
 # === OpenAI APIキーを Streamlit Cloud の secrets から取得 ===
 client = openai.OpenAI(api_key=st.secrets["openai_api_key"])
 
-# === 簡易な日本語への翻訳関数（ChatGPTを使って英語→高校生でもわかる日本語） ===
-def translate_to_simple_japanese(english_text):
-    if not english_text:
-        return "翻訳対象のテキストがありません。"
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": "あなたは優秀な翻訳者です。専門用語はやさしく言い換えて、高校生にもわかる平易な日本語に翻訳してください。"},
-            {"role": "user", "content": english_text}
-        ]
-    )
-    return response.choices[0].message.content.strip()
-
 # === 日本語→英語翻訳関数（ChatGPTを使って日本語→英語） ===
 def translate_to_english(japanese_text):
+    # GPTを使って日本語を英語に翻訳
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
@@ -42,8 +30,10 @@ def translate_to_english(japanese_text):
 
 # === 英訳からシンプルな英語キーワードを抽出 ===
 def extract_english_phrase(text):
+    # 英数字とスペースのみで3文字以上続くものを抽出
     matches = re.findall(r'[A-Za-z0-9+\- ]{3,}', text)
     if matches:
+        # もっとも短いものを取得
         matches = sorted(matches, key=lambda x: (len(x), x))
         return matches[0].strip()
     return text
@@ -130,7 +120,7 @@ def search_jrct(disease_name, free_keyword, location):
 # =====================================================
 #                  Streamlit アプリ本体
 # =====================================================
-# -- タイトル部分 --
+# -- タイトル --
 col1, col2 = st.columns([1, 3])
 with col1:
     st.image("Tech0_team_sleep_well_1.jpg", width=180)
@@ -197,7 +187,7 @@ if st.button("検索"):
     if not studies:
         st.warning("ClinicalTrials.govで該当する試験は見つかりませんでした。")
     else:
-        # データフレーム作成
+        # DataFrame化
         results_ctgov = []
         for study in studies:
             protocol = study.get("protocolSection", {})
@@ -207,7 +197,7 @@ if st.button("検索"):
             eligibility = protocol.get("eligibilityModule", {})
             location_module = protocol.get("locationsModule", {})
 
-            # Locationsが複数あればまとめる
+            # Locations が複数ある場合はカンマ区切りにする
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
@@ -223,66 +213,10 @@ if st.button("検索"):
 
         df_clinical = pd.DataFrame(results_ctgov)
 
-        # ================================
-        # CSV ダウンロードボタン
-        # ================================
-        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（英語）")
+        # HTMLテーブル表示
+        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧")
+        st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
+
+        # CSVダウンロードボタン
         csv = df_clinical.to_csv(index=False).encode('utf-8')
-        st.download_button("検索結果をCSVでダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
-
-        # ============================================
-        # 表示＋各項目の右側に「翻訳」ボタンをつける版
-        # ============================================
-        st.write("---")
-        st.write("## ClinicalTrials.gov 検索結果（項目ごとの翻訳ボタン付き）")
-
-        # セッションステートに翻訳結果を保存するdictionaryを用意
-        if "translations" not in st.session_state:
-            st.session_state["translations"] = {}
-
-        # 行ごとに描画
-        for i, row in df_clinical.iterrows():
-            nct_id = row["試験ID"]
-            official_title = row["試験名"]
-            brief_en = row["Brief Summary"]
-            elig_en = row["Eligibility Criteria"]
-            locs = row["Locations"]
-            status = row["ステータス"]
-            last_update = row["Last Update Posted"]
-
-            # セッションステートに既に翻訳があれば取得
-            key_bs = f"brief_summary_{i}"
-            key_ec = f"eligibility_{i}"
-
-            # まだ翻訳されていなければ原文、翻訳されていれば翻訳文を表示
-            display_brief = st.session_state["translations"].get(key_bs, brief_en)
-            display_elig = st.session_state["translations"].get(key_ec, elig_en)
-
-            st.markdown(f"**[試験ID]**: {nct_id}")
-            st.markdown(f"**[試験名]**: {official_title}")
-            st.markdown(f"**[ステータス]**: {status}")
-            st.markdown(f"**[Last Update Posted]**: {last_update}")
-            st.markdown(f"**[Locations]**: {locs}")
-
-            # Brief Summary（翻訳ボタンを右側に置くためにカラムを並べる）
-            col_bs_text, col_bs_button = st.columns([4, 1], gap="small")
-            with col_bs_text:
-                st.markdown(f"**Brief Summary**: {display_brief}")
-            with col_bs_button:
-                if st.button("翻訳", key=f"bs_btn_{i}"):
-                    translated = translate_to_simple_japanese(brief_en)
-                    st.session_state["translations"][key_bs] = translated
-                    st.experimental_rerun()
-
-            # Eligibility Criteria（こちらも右側に翻訳ボタン）
-            col_ec_text, col_ec_button = st.columns([4, 1], gap="small")
-            with col_ec_text:
-                st.markdown(f"**Eligibility Criteria**: {display_elig}")
-            with col_ec_button:
-                if st.button("翻訳", key=f"ec_btn_{i}"):
-                    translated = translate_to_simple_japanese(elig_en)
-                    st.session_state["translations"][key_ec] = translated
-                    st.experimental_rerun()
-
-            # 区切り線
-            st.write("---")
+        st.download_button("ClinicalTrials.govの結果をCSVでダウンロード", data=csv, file_name="clinical_trials.csv", mime="text/csv")
