@@ -236,12 +236,12 @@ if st.button("検索"):
 
             # Eligibility Criteria は表示しない（取得しない）
             results_ctgov.append({
-                "試験ID": identification.get("nctId", ""),
+                "試験ID": nct_id,
                 "試験名": identification.get("officialTitle", ""),
                 "Brief Summary": description.get("briefSummary", ""),
                 "Locations": loc_str,
                 "ステータス": status_module.get("overallStatus", ""),
-                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", "")
+                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", ""),
                 "リンク": link_url  # 後でHTMLタグ化する
             })
 
