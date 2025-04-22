@@ -134,6 +134,7 @@ if st.button("検索"):
     
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
+        # 検索結果一覧タイトルを青色に
         st.markdown("<h2 style='color: blue;'>🔍 jRCT 検索結果一覧</h2>", unsafe_allow_html=True)
 
         # リンクを含むHTMLを生成
@@ -188,10 +189,9 @@ if st.button("検索"):
                 "試験ID": study.get("protocolSection", {}).get("identificationModule", {}).get("nctId", ""),
                 "試験名": study.get("protocolSection", {}).get("identificationModule", {}).get("officialTitle", ""),
                 "ステータス": study.get("protocolSection", {}).get("statusModule", {}).get("overallStatus", ""),
-                # 「開始日」と「場所」は削る → 削除
-                # "開始日": study.get("protocolSection", {}).get("statusModule", {}).get("startDateStruct", {}).get("startDate", ""),
-                # "場所": study.get("protocolSection", {}).get("locationsModule", {}).get("locations", [{}])[0].get("locationFacility", ""),
-                # Brief summary を追加
+                # 開始日と場所は削除
+                # "開始日": ...
+                # "場所": ...
                 "Brief summary": study.get("protocolSection", {})
                                   .get("descriptionModule", {})
                                   .get("briefSummary", ""),
@@ -200,13 +200,15 @@ if st.button("検索"):
 
         df_clinical = pd.DataFrame(results)
 
+        # タイトルを青色に
+        st.markdown("<h2 style='color: blue;'>🔍 ClinicalTrials.gov 検索結果一覧</h2>", unsafe_allow_html=True)
+
         # Convert URLs to clickable links
         def make_clickable(val):
             return f'<a href="{val}" target="_blank">リンク</a>'
 
         df_clinical['リンク'] = df_clinical['リンク'].apply(make_clickable)
     
-         st.markdown("<h2 style='color: blue;'>🔍 ClinicalTrials.gov 検索結果一覧</h2>", unsafe_allow_html=True)
         st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         csv = df_clinical.to_csv(index=False).encode('utf-8')
