@@ -36,10 +36,13 @@ def translate_to_english(japanese_text):
 # 英語の単語を抽出する関数
 # =====================
 def extract_english_phrase(text):
-    """英数字とスペースだけで3文字以上連続する箇所を抽出して最も短いものを返す"""
+    """
+    英数字とスペースのみで3文字以上連続する箇所を抽出。
+    もっとも短いものを優先的に返す。
+    """
     matches = re.findall(r'[A-Za-z0-9+\- ]{3,}', text)
     if matches:
-        # 文字数が短いものを優先
+        # 文字数が短い順＋辞書順でソート
         matches = sorted(matches, key=lambda x: (len(x), x))
         return matches[0].strip()
     return text
@@ -48,7 +51,10 @@ def extract_english_phrase(text):
 # ClinicalTrials.gov 検索API
 # =====================
 def fetch_trials(condition, other_terms, location):
-    """ClinicalTrials.govのAPI v2から情報を取得。Recruitingのものだけfilterする。"""
+    """
+    ClinicalTrials.govのAPI v2から情報を取得（Recruitingのみ）。
+    condition, other_terms, location は英語で与える。
+    """
     url = "https://clinicaltrials.gov/api/v2/studies"
     params = {
         "query.cond": condition,
@@ -67,15 +73,16 @@ def fetch_trials(condition, other_terms, location):
 # jRCTの検索関数
 # =====================
 def search_jrct(disease_name, free_keyword, location):
-    """Chromedriverを使ってjRCTページを検索し、結果を取得する"""
+    """
+    ChromedriverでjRCTをスクレイピングし、検索結果一覧を取得。
+    """
     CHROMEDRIVER_PATH = "/usr/bin/chromedriver"
     CHROME_BINARY_PATH = "/usr/bin/chromium"
 
     options = Options()
-    options.add_argument(
-        "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-        "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-    )
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+                         " AppleWebKit/537.36 (KHTML, like Gecko)"
+                         " Chrome/122.0.0.0 Safari/537.36")
     options.binary_location = CHROME_BINARY_PATH
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
@@ -89,6 +96,7 @@ def search_jrct(disease_name, free_keyword, location):
         driver.implicitly_wait(40)
 
         driver.get("https://jrct.mhlw.go.jp/search")
+
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "reg-plobrem-1"))
         ).send_keys(disease_name)
@@ -99,7 +107,7 @@ def search_jrct(disease_name, free_keyword, location):
             EC.presence_of_element_located((By.ID, "reg-address"))
         ).send_keys(location)
 
-        # 募集中だけでなく募集前～募集終了のチェックボックスをONにする
+        # 募集前~募集終了までチェックをON
         checkbox = WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.ID, "reg-recruitment-2"))
         )
@@ -107,17 +115,18 @@ def search_jrct(disease_name, free_keyword, location):
             checkbox.click()
 
         # 検索ボタンクリック
-        search_button_element = WebDriverWait(driver, 20).until(
+        search_button = WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.XPATH, '//button[contains(text(), "検索")]'))
         )
-        driver.execute_script("arguments[0].scrollIntoView(true);", search_button_element)
+        driver.execute_script("arguments[0].scrollIntoView(true);", search_button)
         time.sleep(1)
-        search_button_element.click()
+        search_button.click()
 
-        # 結果テーブルを取得
+        # 結果テーブルの行を取得
         rows = WebDriverWait(driver, 20).until(
             EC.presence_of_all_elements_located(
-                (By.CSS_SELECTOR, "table.table-search tbody tr"))
+                (By.CSS_SELECTOR, "table.table-search tbody tr")
+            )
         )
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
@@ -157,18 +166,20 @@ free_keyword = st.text_input("フリーワード", "EGFR")
 jp_location = st.text_input("実施場所：東京、大阪 など", "東京")
 
 if st.button("検索"):
-    # ******************************
+    # =====================
     # jRCT 検索
-    # ******************************
+    # =====================
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
+    st.subheader("🔍 jRCT 検索結果一覧")
     if jrct_results:
-        st.subheader("🔍 jRCT 検索結果一覧")
+        # 何件ヒットしたかを表示
+        st.write(f"**検索件数: {len(jrct_results)} 件**")
+
         df_jrct = pd.DataFrame(jrct_results)
 
-        # "詳細" 列をリンクに変換
+        # "詳細"列をリンクに変換
         def make_clickable_jrct(val):
             return f'<a href="{val}" target="_blank">詳細</a>'
-
         df_jrct['詳細'] = df_jrct['詳細'].apply(make_clickable_jrct)
 
         st.write(df_jrct.to_html(escape=False, index=False), unsafe_allow_html=True)
@@ -183,15 +194,15 @@ if st.button("検索"):
     else:
         st.warning("jRCTの検索結果が見つかりませんでした。")
 
-    # ******************************
+    # =====================
     # ClinicalTrials.gov 検索
-    # ******************************
-    # 1) ユーザの日本語入力を英語に翻訳
+    # =====================
+    # 1) 日本語→英語翻訳
     disease_name_en_raw = translate_to_english(disease_name)
     free_keyword_en_raw = translate_to_english(free_keyword)
     jp_location_en_raw = translate_to_english(jp_location)
 
-    # 2) シンプル英語キーの抽出
+    # 2) シンプル英語キーへの変換
     condition_en = extract_english_phrase(disease_name_en_raw)
     other_terms_en = extract_english_phrase(free_keyword_en_raw)
     location_en = extract_english_phrase(jp_location_en_raw)
@@ -205,10 +216,13 @@ if st.button("検索"):
     data = fetch_trials(condition_en, other_terms_en, location_en)
     studies = data.get("studies", [])
 
+    st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（Eligibility Criteria は表示しません）")
     if not studies:
         st.warning("ClinicalTrials.gov で該当する試験は見つかりませんでした。")
     else:
-        # Eligibility Criteria は取得しない or 表示しない
+        # 件数表示
+        st.write(f"**検索件数: {len(studies)} 件**")
+
         results_ctgov = []
         for study in studies:
             protocol = study.get("protocolSection", {})
@@ -220,7 +234,7 @@ if st.button("検索"):
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
-            # Eligibility Criteria カラムは除外
+            # Eligibility Criteria は表示しない（取得しない）
             results_ctgov.append({
                 "試験ID": identification.get("nctId", ""),
                 "試験名": identification.get("officialTitle", ""),
@@ -232,10 +246,10 @@ if st.button("検索"):
 
         df_clinical = pd.DataFrame(results_ctgov)
 
-        st.subheader("🔍 ClinicalTrials.gov 検索結果一覧（Eligibility Criteria は表示しません）")
+        # 表示
         st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
-        # CSVダウンロードボタン
+        # CSV ダウンロードボタン
         csv_ct = df_clinical.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="ClinicalTrials.govの結果をCSVでダウンロード",
