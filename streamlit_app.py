@@ -42,7 +42,6 @@ def extract_english_phrase(text):
     """
     matches = re.findall(r'[A-Za-z0-9+\- ]{3,}', text)
     if matches:
-        # 文字数が短い順＋辞書順でソート
         matches = sorted(matches, key=lambda x: (len(x), x))
         return matches[0].strip()
     return text
@@ -165,16 +164,17 @@ disease_name = st.text_input("疾患名", "肺がん")
 free_keyword = st.text_input("フリーワード", "EGFR")
 jp_location = st.text_input("実施場所：東京、大阪 など", "東京")
 
+# -----------------------------
+# 検索ボタンクリック時の処理
+# -----------------------------
 if st.button("検索"):
-    # =====================
+    # ===============
     # jRCT 検索
-    # =====================
+    # ===============
     jrct_results = search_jrct(disease_name, free_keyword, jp_location)
     st.subheader("🔍 jRCT 検索結果一覧")
     if jrct_results:
-        # 何件ヒットしたかを表示
         st.write(f"**検索件数: {len(jrct_results)} 件**")
-
         df_jrct = pd.DataFrame(jrct_results)
 
         # "詳細"列をリンクに変換
@@ -194,9 +194,9 @@ if st.button("検索"):
     else:
         st.warning("jRCTの検索結果が見つかりませんでした。")
 
-    # =====================
+    # ===============
     # ClinicalTrials.gov 検索
-    # =====================
+    # ===============
     # 1) 日本語→英語翻訳
     disease_name_en_raw = translate_to_english(disease_name)
     free_keyword_en_raw = translate_to_english(free_keyword)
@@ -212,7 +212,7 @@ if st.button("検索"):
     st.write(f"Other Terms: {free_keyword} → `{other_terms_en}`")
     st.write(f"Location: {jp_location} → `{location_en}`")
 
-    # 3) ClinicalTrials.gov API 呼び出し
+    # 3) ClinicalTrials.gov API呼び出し
     data = fetch_trials(condition_en, other_terms_en, location_en)
     studies = data.get("studies", [])
 
@@ -220,9 +220,9 @@ if st.button("検索"):
     if not studies:
         st.warning("ClinicalTrials.gov で該当する試験は見つかりませんでした。")
     else:
-        # 件数表示
         st.write(f"**検索件数: {len(studies)} 件**")
 
+        # 結果整理
         results_ctgov = []
         for study in studies:
             protocol = study.get("protocolSection", {})
@@ -231,25 +231,68 @@ if st.button("検索"):
             status_module = protocol.get("statusModule", {})
             location_module = protocol.get("locationsModule", {})
 
+            # nctId をリンク先に活用
+            nct_id = identification.get("nctId", "")
+            link_url = f"https://clinicaltrials.gov/study/{nct_id}"  # ClinicalTrials.gov 詳細ページ
+
+            # Locations
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
-            # Eligibility Criteria は表示しない（取得しない）
+            # Eligibility Criteria は表示しない
             results_ctgov.append({
-                "試験ID": identification.get("nctId", ""),
+                "試験ID": nct_id,
                 "試験名": identification.get("officialTitle", ""),
                 "Brief Summary": description.get("briefSummary", ""),
                 "Locations": loc_str,
                 "ステータス": status_module.get("overallStatus", ""),
-                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", "")
+                "Last Update Posted": status_module.get("lastUpdatePostDateStruct", {}).get("lastUpdatePostDate", ""),
+                "リンク": link_url
             })
 
         df_clinical = pd.DataFrame(results_ctgov)
 
-        # 表示
-        st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
+        # -----------------------------
+        # 「試験名」「Brief Summary」のカラム幅を広げたい
+        # + 表の右端にリンク
+        # -----------------------------
+        #
+        # 1) "リンク" カラムをHTMLリンクに変換
+        def make_clickable_ctgov(url):
+            return f'<a href="{url}" target="_blank">リンク</a>'
+        df_clinical["リンク"] = df_clinical["リンク"].apply(make_clickable_ctgov)
 
-        # CSV ダウンロードボタン
+        # 2) カラム幅をCSSで調整する
+        custom_css = """
+        <style>
+        table {
+            table-layout: auto !important;
+            width: 100% !important;
+            border-collapse: collapse;
+        }
+        th {
+            padding: 8px;
+            text-align: left;
+        }
+        td {
+            padding: 8px;
+            vertical-align: top;
+            text-align: left;
+        }
+        /* 試験名 (2列目) と Brief Summary (3列目) の幅を広げる */
+        th:nth-child(2), td:nth-child(2) {
+            min-width: 200px;
+        }
+        th:nth-child(3), td:nth-child(3) {
+            min-width: 300px;
+        }
+        </style>
+        """
+        # df を HTMLテーブルに変換（HTML埋め込みのため escape=False）
+        html_table = df_clinical.to_html(escape=False, index=False)
+        st.write(custom_css + html_table, unsafe_allow_html=True)
+
+        # CSV ダウンロード
         csv_ct = df_clinical.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="ClinicalTrials.govの結果をCSVでダウンロード",
