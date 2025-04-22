@@ -134,7 +134,7 @@ if st.button("検索"):
     
     if jrct_results:
         df_jrct = pd.DataFrame(jrct_results)
-        st.subheader("<h2 style='color: blue;'>🔍 jRCT 検索結果一覧</h2>")
+        st.markdown("<h2 style='color: blue;'>🔍 jRCT 検索結果一覧</h2>", unsafe_allow_html=True)
 
         # リンクを含むHTMLを生成
         def make_clickable(val):
@@ -206,7 +206,7 @@ if st.button("検索"):
 
         df_clinical['リンク'] = df_clinical['リンク'].apply(make_clickable)
     
-        st.subheader("<h2 style='color: blue;'>🔍 ClinicalTrials.gov 検索結果一覧</h2>")
+         st.markdown("<h2 style='color: blue;'>🔍 ClinicalTrials.gov 検索結果一覧</h2>", unsafe_allow_html=True)
         st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
 
         csv = df_clinical.to_csv(index=False).encode('utf-8')
