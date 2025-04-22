@@ -231,6 +231,10 @@ if st.button("検索"):
             status_module = protocol.get("statusModule", {})
             location_module = protocol.get("locationsModule", {})
 
+            # "試験ID" でリンクを作れるように、リンク先を組み立て
+            nct_id = identification.get("nctId", "")
+            link_url = f"https://clinicaltrials.gov/study/{nct_id}"  # ClinicalTrials.govの詳細ページ
+
             loc_list = location_module.get("locations", [])
             loc_str = ", ".join([loc.get("locationFacility", "") for loc in loc_list])
 
@@ -256,8 +260,33 @@ if st.button("検索"):
 
         df_clinical["リンク"] = df_clinical["リンク"].apply(make_clickable_ctgov)
 
-        # 表示
-        st.write(df_clinical.to_html(escape=False, index=False), unsafe_allow_html=True)
+        # DataFrameをHTMLに変換する際に、列幅を指定したCSSを埋め込む
+        # 例: 試験名とBrief Summaryに対し、最小幅(min-width)を設定
+        custom_css = """
+        <style>
+        table {
+            table-layout: auto !important;
+            width: 100% !important;
+            border-collapse: collapse;
+        }
+        th {
+            padding: 8px;
+        }
+        td {
+            padding: 8px;
+            vertical-align: top;
+        }
+        th:nth-child(2), td:nth-child(2) {
+            min-width: 200px; /* 試験名の幅 */
+        }
+        th:nth-child(3), td:nth-child(3) {
+            min-width: 300px; /* Brief Summaryの幅 */
+        }
+        </style>
+        """
+        # dfをHTMLに変換
+        html_table = df_clinical.to_html(escape=False, index=False)
+        st.write(custom_css + html_table, unsafe_allow_html=True)
 
         # CSV ダウンロードボタン
         csv_ct = df_clinical.to_csv(index=False).encode('utf-8')
